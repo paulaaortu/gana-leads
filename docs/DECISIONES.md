@@ -36,6 +36,13 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 30 | Edición parcial | PATCH con solo los campos enviados; `null` borra el dato; columnas editables en lista blanca | Distingue «no tocar» de «borrar»; sin inyección por nombres de columna | PUT con el recurso completo |
 | 31 | Detalle | Score y desglose calculados con el motor TypeScript y los pesos activos; la respuesta incluye `weightsConfigId` | Desglose explicable; toda la respuesta usa una única versión de pesos | Reutilizar el SQL del listado |
 | 32 | Identificadores en URL | Validados antes de llegar a la BD (400 si están mal formados) | Un id inválido nunca debe ser un 500 | Dejar que falle PostgreSQL |
+| 33 | Permisos de asignación | Un agente solo se asigna a sí mismo; un admin asigna a cualquier agente; solo se asigna a usuarios con rol `agent` | Regla simple de defender; el admin gestiona, no lleva leads | Cualquiera asigna a cualquiera |
+| 34 | Asignación atómica | `UPDATE ... WHERE id AND agent_id IS NULL`; si no cambia ninguna fila → 409 `ALREADY_ASSIGNED` | Comprobar y escribir en una sola sentencia elimina la ventana de carrera; solo un agente puede ganar | `SELECT` y luego `UPDATE` (carrera); `SELECT ... FOR UPDATE` (válido, pero más bloqueos y más código); tabla de asignaciones con restricción única |
+| 35 | Desasignación | Permiso (agente asignado o admin) comprobado dentro del `UPDATE` | Nadie puede cambiar el dueño entre la comprobación y la escritura | Comprobar el permiso aparte |
+| 36 | Idempotencia | Repetir la misma asignación o desasignación devuelve 200 sin cambios | Un doble clic o un reintento de red no produce un error confuso; 409 solo si el dueño es otro | 409 siempre que no haya cambio |
+| 37 | Asignar y versión | Asignar/desasignar suben `version` y `updated_at` | Cualquier modificación del lead invalida las ediciones hechas con datos anteriores | Asignación sin tocar la versión |
+| 38 | Asignación y estado | La asignación no depende del estado del lead | Reglas independientes y más simples; las transiciones de estado se tratan aparte | Impedir asignar leads cerrados |
+| 39 | Lista de agentes | `GET /api/agents` público | Es la pantalla de "login" simulado; solo expone nombre y rol de usuarios de prueba | Exigir identidad (imposible de usar antes de elegirla) |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.

@@ -6,6 +6,7 @@ import { CFG_CTE, scoreSql } from './scoreSql';
 import { computeScore } from '../scoring';
 import { loadActiveWeights } from '../weights/repository';
 import type { CreateLeadInput, UpdateLeadInput } from './schemas';
+import type { Agent } from '../middleware/auth';
 
 interface Row {
   id: string;            // BIGSERIAL: pg lo devuelve como string
@@ -195,4 +196,62 @@ export async function updateLead(id: number, input: UpdateLeadInput) {
     );
   }
   return getLeadDetail(id, new Date());
+}
+
+export async function assignLead(leadId: number, targetAgentId: number, caller: Agent) {
+  // Un agente solo puede asignarse a sí mismo; un admin, a cualquiera.
+  if (caller.role !== 'admin' && targetAgentId !== caller.id) {
+    throw new AppError(403, 'FORBIDDEN', 'Un agente solo puede asignarse leads a sí mismo.');
+  }
+
+  // El destinatario debe existir y ser un agente (el admin gestiona, no lleva leads).
+  const target = await pool.query<{ role: string }>('SELECT role FROM agents WHERE id = $1', [targetAgentId]);
+  if (target.rows[0]?.role !== 'agent') {
+    throw new AppError(400, 'INVALID_ASSIGNEE', 'El agente indicado no existe o no puede tener leads asignados.');
+  }
+
+  // Comprobar (agent_id IS NULL) y escribir en UNA sentencia: no hay ventana de carrera.
+  const { rowCount } = await pool.query(
+    `UPDATE leads
+        SET agent_id = $1, updated_at = now(), version = version + 1
+      WHERE id = $2 AND agent_id IS NULL`,
+    [targetAgentId, leadId],
+  );
+
+  if (!rowCount) {
+    // Ninguna fila cambió: o no existe, o ya tenía dueño. Esta consulta solo decide QUÉ error dar.
+    const current = await pool.query<{ agent_id: number | null }>('SELECT agent_id FROM leads WHERE id = $1', [leadId]);
+    if (!current.rowCount) throw new AppError(404, 'LEAD_NOT_FOUND', 'El lead no existe.');
+    const owner = current.rows[0]!.agent_id;
+    if (owner === null) {
+      throw new AppError(409, 'CONCURRENT_CHANGE', 'El lead cambió mientras se procesaba la petición. Vuelve a intentarlo.');
+    }
+    if (owner !== targetAgentId) {
+      throw new AppError(409, 'ALREADY_ASSIGNED', 'Este lead ya está asignado a otro agente.', { assignedAgentId: owner });
+    }
+    // Ya estaba asignado a ese mismo agente: operación idempotente, no es un error.
+  }
+  return getLeadDetail(leadId, new Date());
+}
+
+export async function unassignLead(leadId: number, caller: Agent) {
+  const isAdmin = caller.role === 'admin';
+
+  // El permiso (asignado o admin) se comprueba DENTRO del UPDATE: nadie puede cambiar el dueño entre medias.
+  const { rowCount } = await pool.query(
+    `UPDATE leads
+        SET agent_id = NULL, updated_at = now(), version = version + 1
+      WHERE id = $1 AND agent_id IS NOT NULL AND ($2::boolean OR agent_id = $3)`,
+    [leadId, isAdmin, caller.id],
+  );
+
+  if (!rowCount) {
+    const current = await pool.query<{ agent_id: number | null }>('SELECT agent_id FROM leads WHERE id = $1', [leadId]);
+    if (!current.rowCount) throw new AppError(404, 'LEAD_NOT_FOUND', 'El lead no existe.');
+    if (current.rows[0]!.agent_id !== null) {
+      throw new AppError(403, 'FORBIDDEN', 'Solo el agente asignado o un administrador pueden desasignar este lead.');
+    }
+    // Ya estaba sin asignar: operación idempotente.
+  }
+  return getLeadDetail(leadId, new Date());
 }

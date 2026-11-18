@@ -66,10 +66,22 @@ Todas las rutas (salvo `/api/health`) requieren la cabecera `X-Agent-Id`.
 Detalle del lead con `score`, `priority`, `breakdown` (valoración, peso, contribución y si el dato estaba
 ausente o era inválido, por criterio) y `weightsConfigId`.
 
+### `GET /api/agents`
+Lista pública de usuarios simulados (`id`, `name`, `role`), para elegir identidad.
+
 ### `POST /api/leads`
 Cuerpo: `name`, `phone` (obligatorios); `isNewCustomer`, `interest` (`low|medium|high`), `source`
 (`referral|web|event|cold`) opcionales. Cualquier otro campo → `400`. El estado inicial es `nuevo`, sin agente.
 Responde `201` con el lead.
+
+### `POST /api/leads/:id/assign`
+Cuerpo opcional: `{ "agentId": number }`. Sin `agentId`, se asigna a quien hace la petición.
+Un agente solo puede asignarse a sí mismo (`403` si indica a otro); un administrador puede asignar a cualquier agente.
+Solo se asignan leads a usuarios con rol `agent` (`400 INVALID_ASSIGNEE`). Si el lead ya pertenece a otro agente → `409 ALREADY_ASSIGNED`.
+Repetir una asignación ya hecha es idempotente.
+
+### `POST /api/leads/:id/unassign`
+Lo puede hacer el agente asignado o un administrador (`403` en otro caso). Idempotente.
 
 ### `PATCH /api/leads/:id`
 Cuerpo: `version` (obligatorio, la que el cliente vio) más al menos un campo editable. Si otra persona modificó
@@ -133,7 +145,14 @@ La puntuación **siempre se calcula en el servidor**; el cliente nunca la envía
 Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.ts`.
 
 ## Concurrencia y consistencia
-(pendiente: asignación atómica, bloqueo optimista, cambios de pesos con usuarios activos)
+
+- **Asignación simultánea del mismo lead:** la condición de "sin dueño" va dentro de la propia sentencia
+  (`UPDATE ... WHERE agent_id IS NULL`), de modo que PostgreSQL serializa las peticiones sobre esa fila:
+  una gana y el resto reciben `409`. Un test lanza cuatro asignaciones simultáneas y comprueba que solo una prospera.
+- **Edición con datos desactualizados:** bloqueo optimista. Cada lead tiene una `version`; el cliente la envía
+  al guardar y el `UPDATE` solo se aplica si coincide (`409 VERSION_CONFLICT` en otro caso). Asignar y desasignar
+  también incrementan la versión, de modo que invalidan ediciones hechas con datos anteriores.
+- **Cambio de pesos mientras otros consultan:** (pendiente de implementar y documentar)
 
 ## Pruebas
 `cd backend && npm test`. Cubren la validación de pesos y el cálculo de puntuación (casos límite incluidos).

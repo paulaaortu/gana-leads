@@ -52,6 +52,10 @@ export const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export const assignSchema = z
+  .object({ agentId: z.number().int().positive().optional() })
+  .strict();
+
 export type ListQuery = z.infer<typeof listQuerySchema>;
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
