@@ -62,6 +62,19 @@ Todas las rutas (salvo `/api/health`) requieren la cabecera `X-Agent-Id`.
 
 ### `GET /api/leads`
 
+### `GET /api/leads/:id`
+Detalle del lead con `score`, `priority`, `breakdown` (valoración, peso, contribución y si el dato estaba
+ausente o era inválido, por criterio) y `weightsConfigId`.
+
+### `POST /api/leads`
+Cuerpo: `name`, `phone` (obligatorios); `isNewCustomer`, `interest` (`low|medium|high`), `source`
+(`referral|web|event|cold`) opcionales. Cualquier otro campo → `400`. El estado inicial es `nuevo`, sin agente.
+Responde `201` con el lead.
+
+### `PATCH /api/leads/:id`
+Cuerpo: `version` (obligatorio, la que el cliente vio) más al menos un campo editable. Si otra persona modificó
+el lead desde entonces → `409 VERSION_CONFLICT` con `details.currentVersion`; el cliente debe recargar y reintentar.
+
 | Parámetro | Descripción | Por defecto |
 |---|---|---|
 | `status` | `nuevo`, `en_gestion`, `contactado`, `cerrado` | todos |

@@ -29,6 +29,13 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 23 | Paginación | Offset/limit con `count(*) OVER ()` y `pageSize` máximo 100 | Encaja con el "1–20 de N" y los botones Anterior/Siguiente; el tope evita peticiones desmesuradas | Paginación por cursor (mejor en páginas profundas, pero no permite saltar a una página ni mostrar el total) |
 | 24 | Búsqueda | `ILIKE` en nombre y `LIKE` en teléfono con escape de comodines | Simple, segura y suficiente; parámetros siempre enlazados (sin inyección SQL) | Búsqueda de texto completo |
 | 25 | Cobertura SQL/TS | Test que compara el score de SQL con el de TypeScript sobre todo el seed | Detecta cualquier divergencia entre las dos implementaciones | Confiar en que coinciden |
+| 26 | Entrada de datos | Esquemas Zod `.strict()`: cualquier campo no permitido se rechaza con 400 | La puntuación no es manipulable desde el navegador; evita *mass assignment* (estado, agente, fechas, versión) | Ignorar en silencio los campos extra |
+| 27 | Alta de leads | El servidor fija estado `nuevo`, sin agente y la fecha de creación | El cliente no decide datos que son del sistema | Aceptarlos del cliente |
+| 28 | Teléfono | Se normaliza (sin espacios ni signos) y valida: 7–15 dígitos, `+` inicial opcional; se guarda normalizado | Datos consistentes y búsqueda fiable | Guardar el texto tal cual |
+| 29 | Edición concurrente | Bloqueo optimista: el cliente envía `version`; `UPDATE ... WHERE id AND version` atómico; si no coincide → 409 con `currentVersion` | Detecta datos desactualizados sin bloqueos largos y sin ventana de carrera; no se pierde ningún cambio en silencio | *Last write wins*; bloqueo pesimista (`SELECT ... FOR UPDATE` durante la edición); `ETag`/`If-Match` (equivalente, más estándar pero más ceremonia) |
+| 30 | Edición parcial | PATCH con solo los campos enviados; `null` borra el dato; columnas editables en lista blanca | Distingue «no tocar» de «borrar»; sin inyección por nombres de columna | PUT con el recurso completo |
+| 31 | Detalle | Score y desglose calculados con el motor TypeScript y los pesos activos; la respuesta incluye `weightsConfigId` | Desglose explicable; toda la respuesta usa una única versión de pesos | Reutilizar el SQL del listado |
+| 32 | Identificadores en URL | Validados antes de llegar a la BD (400 si están mal formados) | Un id inválido nunca debe ser un 500 | Dejar que falle PostgreSQL |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
@@ -45,3 +52,4 @@ mayores se propone guardar el score y recalcularlo solo al editar un lead o camb
 - La búsqueda con `ILIKE '%…%'` no usa índice; mejora propuesta: índice `pg_trgm`.
 - Con offset, las páginas profundas son más lentas; mejora propuesta: paginación por cursor.
 - Si la página pedida está fuera de rango, `total` llega como 0.
+- Una edición que no cambia ningún valor también incrementa version y updated_at.
