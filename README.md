@@ -32,9 +32,26 @@ PORT=3000
 
 ```bash
 cd backend
-npm run migrate     # crea las tablas y la configuración inicial de pesos (idempotente)
-npm test            # pruebas automatizadas
+npm run migrate        # crea las tablas y la configuración inicial de pesos (idempotente)
+npm run seed -- 500    # datos de ejemplo: 5 agentes (1 admin) y 500 leads; regenerable
+npm run dev            # API en http://localhost:3000
+npm test               # pruebas automatizadas
 ```
+
+Comprobación rápida: `GET http://localhost:3000/api/health`.
+
+## Autenticación simulada
+
+No hay login. Cada petición a rutas protegidas lleva la cabecera `X-Agent-Id`; el backend busca ese agente
+en la tabla `agents` y obtiene de ahí su identidad y su rol. El cliente nunca envía el rol.
+
+| Id | Nombre | Rol |
+|---|---|---|
+| 1 | Admin | admin |
+| 2–5 | Agente 01–04 | agent |
+
+Sin cabecera o con un agente inexistente → `401`. Operación de administración sin rol `admin` → `403`.
+Todos los errores siguen el formato `{ "error": { "code", "message", "details" } }`.
 
 Pendiente de documentar: datos de ejemplo (`npm run seed`), arranque de la API (`npm run dev`) y del frontend.
 
@@ -44,8 +61,12 @@ Pendiente de documentar: datos de ejemplo (`npm run seed`), arranque de la API (
 backend/
   migrations/      esquema SQL versionado
   src/db/          conexión a PostgreSQL
+  src/middleware/  autenticación
+  src/routes/
   src/scoring/     motor de puntuación (funciones puras con tests)
   src/scripts/     migrate (y seed, pendiente)
+  app.ts
+  server.ts
 frontend/          (pendiente)
 docs/DECISIONES.md decisiones técnicas y su justificación
 ```
@@ -81,9 +102,6 @@ Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.
 
 ## Concurrencia y consistencia
 (pendiente: asignación atómica, bloqueo optimista, cambios de pesos con usuarios activos)
-
-## Autenticación simulada
-(pendiente)
 
 ## Pruebas
 `cd backend && npm test`. Cubren la validación de pesos y el cálculo de puntuación (casos límite incluidos).
