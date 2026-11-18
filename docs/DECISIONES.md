@@ -22,6 +22,13 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 16 | Autenticación | Simulada: cabecera `X-Agent-Id` validada contra `agents`; el rol sale siempre de la BD | El backend decide la identidad; 401 si no hay identidad, 403 si falta permiso | Confiar en un rol enviado por el cliente |
 | 17 | Datos de ejemplo | Seed determinista, agentes idempotentes (ids fijos), leads regenerables, inserción por lotes con `unnest` | Reproducible y rápido; no destruye la config de pesos | `TRUNCATE ... CASCADE` (borraría la config) |
 | 18 | Configuración | Variables de entorno validadas con Zod al arrancar | Fallo temprano y con mensaje claro | Leer `process.env` sin validar |
+| 19 | Score en listados | Calculado en SQL con los pesos activos, generado desde las mismas constantes que el motor TypeScript | Orden y paginación siempre coherentes con la configuración vigente; sin recálculos al cambiar pesos; una sola fuente de verdad para las reglas | Score precalculado y guardado (más rápido de leer, pero exige recalcular y se puede desincronizar) |
+| 20 | Consistencia ante cambio de pesos | Pesos y leads se leen en una sola sentencia SQL; la respuesta incluye `weightsConfigId` | Una sentencia ve una instantánea consistente: nunca se mezclan dos configuraciones en una respuesta | Leer pesos en una consulta y leads en otra |
+| 21 | Configuración inválida | El CTE solo admite configuraciones con 4 criterios y suma 100; si no hay ninguna válida → 503 `WEIGHTS_CONFIG_INVALID` | Respuesta predecible en lugar de scores absurdos | Asumir que la configuración siempre es válida |
+| 22 | Empates | `ORDER BY score, id ASC` | Orden determinista y paginación estable | Orden por score solo |
+| 23 | Paginación | Offset/limit con `count(*) OVER ()` y `pageSize` máximo 100 | Encaja con el "1–20 de N" y los botones Anterior/Siguiente; el tope evita peticiones desmesuradas | Paginación por cursor (mejor en páginas profundas, pero no permite saltar a una página ni mostrar el total) |
+| 24 | Búsqueda | `ILIKE` en nombre y `LIKE` en teléfono con escape de comodines | Simple, segura y suficiente; parámetros siempre enlazados (sin inyección SQL) | Búsqueda de texto completo |
+| 25 | Cobertura SQL/TS | Test que compara el score de SQL con el de TypeScript sobre todo el seed | Detecta cualquier divergencia entre las dos implementaciones | Confiar en que coinciden |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
@@ -32,3 +39,9 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 - El score depende del tiempo (antigüedad); varía como mucho una vez al día por lead.
 - Neon gratuito: arranque en frío tras inactividad.
 - La autenticación es simulada: cualquiera que conozca un X-Agent-Id puede actuar como ese agente. En producción se sustituiría por JWT o sesión.
+- Ordenar por score calculado obliga a evaluar la puntuación de todos los leads filtrados en cada petición
+(no se puede indexar). Con [tu medición con 50 000 leads: ___ ms] es aceptable; para volúmenes mucho
+mayores se propone guardar el score y recalcularlo solo al editar un lead o cambiar los pesos, o paginar por cursor.
+- La búsqueda con `ILIKE '%…%'` no usa índice; mejora propuesta: índice `pg_trgm`.
+- Con offset, las páginas profundas son más lentas; mejora propuesta: paginación por cursor.
+- Si la página pedida está fuera de rango, `total` llega como 0.

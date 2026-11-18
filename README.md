@@ -55,6 +55,25 @@ Todos los errores siguen el formato `{ "error": { "code", "message", "details" }
 
 Pendiente de documentar: datos de ejemplo (`npm run seed`), arranque de la API (`npm run dev`) y del frontend.
 
+
+## API
+
+Todas las rutas (salvo `/api/health`) requieren la cabecera `X-Agent-Id`.
+
+### `GET /api/leads`
+
+| Parámetro | Descripción | Por defecto |
+|---|---|---|
+| `status` | `nuevo`, `en_gestion`, `contactado`, `cerrado` | todos |
+| `agent` | id de agente, o `unassigned` para los no asignados | todos |
+| `q` | búsqueda por nombre o teléfono | — |
+| `sort` | `score_desc` o `score_asc` | `score_desc` |
+| `page`, `pageSize` | paginación (máx. 100 por página) | 1, 20 |
+
+Respuesta: `{ data: [{ id, name, phone, status, agent, version, updatedAt, score, priority }], page, pageSize, total, weightsConfigId }`.
+Los empates de puntuación se ordenan por `id` ascendente.
+
+
 ## Estructura del repositorio
 
 ```
