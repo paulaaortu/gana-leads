@@ -39,3 +39,32 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .agent-list { list-style: none; padding: 0; display: grid; gap: 0.5rem; }
 .agent-list button { width: 100%; text-align: left; padding: 0.75rem 1rem; }
 small { color: var(--muted); }
+input, select { font: inherit; padding: 0.45rem 0.6rem; border: 1px solid var(--border);
+  border-radius: 6px; background: var(--surface); color: var(--text); }
+.toolbar { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: flex-end; margin: 1rem 0; }
+.toolbar label { display: grid; gap: 0.25rem; font-size: 0.85rem; color: var(--muted); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.table-wrap.fetching { opacity: 0.6; transition: opacity 0.15s; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 0.65rem 0.85rem; border-bottom: 1px solid var(--border); white-space: nowrap; }
+tbody tr:last-child td { border-bottom: 0; }
+th button.link { all: unset; cursor: pointer; font-weight: 600; }
+th button.link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+.badge { padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.8rem; }
+.status-nuevo { background: rgba(36, 87, 214, 0.18); }
+.status-en_gestion { background: rgba(217, 119, 6, 0.2); }
+.status-contactado { background: rgba(21, 128, 61, 0.2); }
+.status-cerrado { background: rgba(100, 116, 139, 0.22); }
+.prio-alta { background: rgba(180, 35, 24, 0.2); }
+.prio-media { background: rgba(217, 119, 6, 0.2); }
+.prio-baja { background: rgba(100, 116, 139, 0.2); }
+
+.notice { display: flex; gap: 1rem; align-items: center; justify-content: space-between;
+  background: rgba(217, 119, 6, 0.15); padding: 0.6rem 1rem; border-radius: 6px; margin: 0.75rem 0; }
+.pagination { display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 0.5rem; margin-top: 1rem; }
+.empty { text-align: center; padding: 2.5rem 1rem; color: var(--muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+@media (max-width: 700px) { .hide-sm { display: none; } }

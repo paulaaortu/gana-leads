@@ -65,6 +65,13 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 59 | Caché al cambiar de usuario | Se vacía por completo | Los datos y permisos dependen de la identidad | Mantenerla |
 | 60 | Reintentos | Solo ante red caída o 5xx, máximo 2 | Un 4xx no se arregla reintentando | Reintentar siempre |
 | 61 | Tipos de la API | Duplicados en `frontend/src/api/types.ts` | Simple para el alcance de la prueba | Paquete compartido o generación desde un esquema |
+| 62 | Estado de los filtros | En la URL (`useSearchParams`) | El botón «atrás» recupera el listado exacto, recargar no pierde nada y los enlaces son compartibles | Estado local del componente |
+| 63 | Búsqueda | Con retardo de 350 ms (*debounce*) | Evita una petición (y una ordenación completa en BD) por cada tecla | Buscar en cada pulsación |
+| 64 | Paginación en cliente | `keepPreviousData` y tabla atenuada mientras se actualiza | Sin parpadeos ni saltos de diseño al paginar | Vaciar la tabla en cada cambio |
+| 65 | Puntuación mostrada | Hasta 2 decimales | Coherente con la categoría (74,99 no se muestra como 75 junto a «Media») | Redondear a entero |
+| 66 | Cambio de pesos en el cliente | Se compara `weightsConfigId` entre respuestas y se avisa al usuario | El orden mostrado nunca cambia silenciosamente | Ignorarlo |
+| 67 | Página fuera de rango | Se vuelve a la primera | El servidor devuelve `total = 0` en ese caso; el cliente lo gestiona | Mostrar una lista vacía sin más |
+| 68 | Tamaño de página | Fijo en 20 (como el wireframe); el servidor limita a 100 | Interfaz simple; el tope protege al servidor | Selector de tamaño |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
@@ -89,3 +96,4 @@ mayores se propone guardar el score y recalcularlo solo al editar un lead o camb
 - Un listado paginado puede cruzar un cambio de pesos entre dos páginas; cada respuesta declara su
   `weightsConfigId` para que el cliente lo detecte y refresque.
 - Los tipos de la API están duplicados entre backend y frontend; con más tiempo se compartirían en un paquete común.
+- El listado no se actualiza en tiempo real: los cambios de otros usuarios se ven al recargar, cambiar de filtro o de página. Mejora propuesta: refresco periódico o WebSockets.
