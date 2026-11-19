@@ -5,6 +5,7 @@ import { healthRouter } from './routes/health';
 import { meRouter } from './routes/me';
 import { leadsRouter } from './routes/leads';
 import { agentsRouter } from './routes/agents';
+import { weightsRouter } from './routes/weights';
 
 export function createApp() {
   const app = express();
@@ -15,6 +16,7 @@ export function createApp() {
   app.use('/api/me', meRouter);
   app.use('/api/leads', leadsRouter);
   app.use('/api/agents', agentsRouter);
+  app.use('/api/weights', weightsRouter);
 
   app.use(notFound);
   app.use(errorHandler);

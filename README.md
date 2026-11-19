@@ -69,6 +69,16 @@ ausente o era inválido, por criterio) y `weightsConfigId`.
 ### `GET /api/agents`
 Lista pública de usuarios simulados (`id`, `name`, `role`), para elegir identidad.
 
+### `GET /api/weights`
+Configuración activa: `configId`, `weights` (`criterion`, `weight`), quién y cuándo la creó, `valid`/`errors`
+(si está corrupta, informa en lugar de fallar) y la descripción de cada criterio.
+
+### `PUT /api/weights` (solo administrador)
+Cuerpo: `{ "baseConfigId": number, "weights": [{ "criterion", "weight" }, ...] }`. Los pesos deben ser enteros no negativos,
+sin criterios duplicados, con los cuatro criterios presentes y suma exactamente 100: si no, `400 INVALID_WEIGHTS`
+con **todos** los errores. Si `baseConfigId` ya no es la configuración activa → `409 CONFIG_CONFLICT` con
+`details.currentConfigId`. Crea una configuración nueva y la activa de forma atómica.
+
 ### `POST /api/leads`
 Cuerpo: `name`, `phone` (obligatorios); `isNewCustomer`, `interest` (`low|medium|high`), `source`
 (`referral|web|event|cold`) opcionales. Cualquier otro campo → `400`. El estado inicial es `nuevo`, sin agente.
@@ -153,7 +163,14 @@ Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.
 
 - **Asignación simultánea del mismo lead:** la condición de "sin dueño" va dentro de la propia sentencia (`UPDATE ... WHERE agent_id IS NULL`), de modo que PostgreSQL serializa las peticiones sobre esa fila: una gana y el resto reciben `409`. Un test lanza cuatro asignaciones simultáneas y comprueba que solo una prospera.
 - **Edición con datos desactualizados:** bloqueo optimista. Cada lead tiene una `version`; el cliente la envía al guardar y el `UPDATE` solo se aplica si coincide (`409 VERSION_CONFLICT` en otro caso). Asignar y desasignar también incrementan la versión, de modo que invalidan ediciones hechas con datos anteriores.
-- **Cambio de pesos mientras otros consultan:** (pendiente de implementar y documentar)
+- **Cambio de pesos mientras otros consultan:** las configuraciones son inmutables y versionadas: guardar crea una
+  nueva y la activa en una transacción, de modo que cualquier consulta ve la configuración anterior completa o la
+  nueva completa. El listado lee pesos y leads en una sola sentencia, por lo que cada respuesta usa una única
+  configuración e indica cuál en `weightsConfigId`.
+- **Dos administradores guardando a la vez:** bloqueo optimista (`baseConfigId`) más un cerrojo de transacción
+  (`pg_advisory_xact_lock`) que los serializa: el segundo ve la configuración ya cambiada y recibe `409`.
+- **Pesos inválidos o corruptos:** el guardado se rechaza con `400` y todos los errores; si la configuración activa
+  está corrupta, las consultas responden `503 WEIGHTS_CONFIG_INVALID` y el administrador puede repararla.
 - **Cambio de estado:** transacción corta con bloqueo de la fila (`SELECT ... FOR UPDATE`). Con la fila bloqueada se
   evalúan los permisos y la versión y se escribe; peticiones simultáneas sobre el mismo lead se atienden una tras otra
   y solo una puede aplicarse con la misma versión.

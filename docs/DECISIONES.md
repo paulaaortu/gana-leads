@@ -49,6 +49,15 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 43 | Estado y versión | El cambio exige `version`; si no coincide → 409. Pedir el estado que ya tiene → 200 sin cambios | Una decisión basada en datos viejos no se aplica a ciegas; los reintentos no fallan | Aceptar el cambio sin versión |
 | 44 | Orden de comprobaciones | Existencia → permisos → idempotencia → versión | No revelar el estado del lead a quien no tiene permiso | Comprobar primero la versión |
 | 45 | Transacciones | Ayudante `withTransaction` (COMMIT/ROLLBACK, libera siempre la conexión) | Reutilizable (también para guardar pesos) y sin fugas de conexiones | Gestionar BEGIN/COMMIT a mano en cada sitio |
+| 46 | Guardado de pesos | Cada guardado crea una configuración NUEVA y la activa en una transacción (desactiva la anterior e inserta la nueva); el histórico se conserva | Trazabilidad y consistencia: nunca se editan pesos "en caliente"; el cambio es atómico | Sobrescribir los pesos existentes |
+| 47 | Bloqueo optimista de pesos | El cliente envía `baseConfigId`; si ya no es la activa → 409 `CONFIG_CONFLICT` con `currentConfigId` | Dos administradores no se pisan los cambios; mismo criterio que en los leads | *Last write wins* |
+| 48 | Serialización de guardados | `pg_advisory_xact_lock` al inicio de la transacción | Los guardados concurrentes se atienden en fila y el segundo lee el estado ya confirmado. `SELECT ... FOR UPDATE ... WHERE is_active` falla: tras esperar, la fila ya no cumple el filtro y no devuelve la nueva activa, abriendo una ventana de sobreescritura | `FOR UPDATE` sobre la fila activa; nivel `SERIALIZABLE` con reintentos |
+| 49 | Consistencia al cambiar pesos | Lecturas de una sola sentencia (instantánea de PostgreSQL) y `weightsConfigId` en cada respuesta | Nadie ve una mezcla de dos configuraciones en una respuesta; el cliente puede detectar un cambio entre páginas y refrescar | Leer pesos y leads en consultas separadas |
+| 50 | Validación de pesos | `validateWeights` (todos los errores a la vez) en la API + restricciones en BD; enteros de 0 a 100, suma 100 | Doble barrera sin duplicar reglas; un peso 0 es legítimo (anula un criterio) | Validar solo en la interfaz |
+| 51 | Lectura y escritura | `GET` para cualquier usuario autenticado; `PUT` solo admin. El `GET` devuelve `valid` y `errors` en vez de fallar | El administrador necesita ver una configuración corrupta para repararla | Hacer fallar el `GET` con 503 |
+| 52 | Configuración corrupta | Listado y detalle → 503 `WEIGHTS_CONFIG_INVALID`; si no hay ninguna activa, se permite guardar una nueva sin base | Respuesta predecible en vez de puntuaciones sin sentido, con vía de recuperación | Asumir que siempre es válida |
+| 53 | Descripción de criterios | Etiquetas y reglas generadas desde las constantes de `criteria.ts` | La pantalla de administración no puede desincronizarse de las reglas reales | Textos escritos a mano en el frontend |
+| 54 | Tests de integración | Ejecución en serie y los de pesos restauran la configuración original | Comparten la base de datos; evita fallos falsos y no deja basura | Ejecución en paralelo |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
@@ -67,3 +76,8 @@ mayores se propone guardar el score y recalcularlo solo al editar un lead o camb
 - Si la página pedida está fuera de rango, `total` llega como 0.
 - Una edición que no cambia ningún valor también incrementa version y updated_at.
 - El bloqueo de fila del cambio de estado es muy breve, pero bajo carga extrema podría formar colas sobre un mismo lead; es un caso poco realista (un lead lo lleva una persona).
+- Guardar unos pesos idénticos a los actuales crea igualmente una versión nueva; el histórico crece con cada guardado.
+- Con una configuración de pesos corrupta (solo posible por manipulación directa de la base de datos), crear o
+  editar un lead guarda el cambio pero responde 503, porque no puede calcular la puntuación en la respuesta.
+- Un listado paginado puede cruzar un cambio de pesos entre dos páginas; cada respuesta declara su
+  `weightsConfigId` para que el cliente lo detecte y refresque.
