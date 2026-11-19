@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
-import { assignLead, listLeads, unassignLead } from '../leads/repository';
-import { assignSchema, listQuerySchema } from '../leads/schemas';
+import { assignLead, changeStatus, listLeads, unassignLead } from '../leads/repository';
+import { assignSchema, changeStatusSchema, listQuerySchema } from '../leads/schemas';
 import { createLead, getLeadDetail, updateLead } from '../leads/repository';
 import { createLeadSchema, idParamSchema, updateLeadSchema } from '../leads/schemas';
 
@@ -42,4 +42,10 @@ leadsRouter.patch('/:id', async (req, res) => {
   const { id } = idParamSchema.parse(req.params);
   const body = updateLeadSchema.parse(req.body);
   res.json(await updateLead(id, body));
+});
+
+leadsRouter.patch('/:id/status', async (req, res) => {
+  const { id } = idParamSchema.parse(req.params);
+  const body = changeStatusSchema.parse(req.body);
+  res.json(await changeStatus(id, body, req.agent!));
 });

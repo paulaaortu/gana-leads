@@ -43,6 +43,12 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 37 | Asignar y versión | Asignar/desasignar suben `version` y `updated_at` | Cualquier modificación del lead invalida las ediciones hechas con datos anteriores | Asignación sin tocar la versión |
 | 38 | Asignación y estado | La asignación no depende del estado del lead | Reglas independientes y más simples; las transiciones de estado se tratan aparte | Impedir asignar leads cerrados |
 | 39 | Lista de agentes | `GET /api/agents` público | Es la pantalla de "login" simulado; solo expone nombre y rol de usuarios de prueba | Exigir identidad (imposible de usar antes de elegirla) |
+| 40 | Transiciones de estado | Libres entre los cuatro estados; excepción: reabrir un lead `cerrado` solo lo hace un admin | Flexible para el trabajo diario y protege el cierre, que suele tener consecuencias de negocio | Máquina de estados estricta (nuevo → en gestión → contactado → cerrado) |
+| 41 | Quién cambia el estado | El agente asignado o un admin; un lead sin asignar solo lo cambia un admin (el agente primero se lo asigna) | Responsabilidad clara: quien lleva el lead decide su estado | Cualquier agente |
+| 42 | Mecanismo del cambio de estado | Transacción corta con `SELECT ... FOR UPDATE`; reglas en una función pura (`checkStatusChange`) | Hay varias reglas: evaluarlas en código evita duplicarlas en SQL y en TypeScript, y permite probarlas sin base de datos. La asignación, con una sola condición, sí cabe en un `UPDATE` condicional | `UPDATE` condicional con todo en el `WHERE` (lógica duplicada y difícil de mantener) |
+| 43 | Estado y versión | El cambio exige `version`; si no coincide → 409. Pedir el estado que ya tiene → 200 sin cambios | Una decisión basada en datos viejos no se aplica a ciegas; los reintentos no fallan | Aceptar el cambio sin versión |
+| 44 | Orden de comprobaciones | Existencia → permisos → idempotencia → versión | No revelar el estado del lead a quien no tiene permiso | Comprobar primero la versión |
+| 45 | Transacciones | Ayudante `withTransaction` (COMMIT/ROLLBACK, libera siempre la conexión) | Reutilizable (también para guardar pesos) y sin fugas de conexiones | Gestionar BEGIN/COMMIT a mano en cada sitio |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
@@ -60,3 +66,4 @@ mayores se propone guardar el score y recalcularlo solo al editar un lead o camb
 - Con offset, las páginas profundas son más lentas; mejora propuesta: paginación por cursor.
 - Si la página pedida está fuera de rango, `total` llega como 0.
 - Una edición que no cambia ningún valor también incrementa version y updated_at.
+- El bloqueo de fila del cambio de estado es muy breve, pero bajo carga extrema podría formar colas sobre un mismo lead; es un caso poco realista (un lead lo lleva una persona).

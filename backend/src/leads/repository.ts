@@ -7,6 +7,9 @@ import { computeScore } from '../scoring';
 import { loadActiveWeights } from '../weights/repository';
 import type { CreateLeadInput, UpdateLeadInput } from './schemas';
 import type { Agent } from '../middleware/auth';
+import { withTransaction } from '../db/transaction';
+import type { ChangeStatusInput, LeadStatus } from './schemas';
+import { checkStatusChange } from './statusRules';
 
 interface Row {
   id: string;            // BIGSERIAL: pg lo devuelve como string
@@ -253,5 +256,39 @@ export async function unassignLead(leadId: number, caller: Agent) {
     }
     // Ya estaba sin asignar: operación idempotente.
   }
+  return getLeadDetail(leadId, new Date());
+}
+
+export async function changeStatus(leadId: number, input: ChangeStatusInput, caller: Agent) {
+  await withTransaction(async (client) => {
+    // FOR UPDATE bloquea la fila hasta el final de la transacción: nadie más la toca mientras decidimos.
+    const { rows } = await client.query<{ status: LeadStatus; agent_id: number | null; version: number }>(
+      'SELECT status, agent_id, version FROM leads WHERE id = $1 FOR UPDATE',
+      [leadId],
+    );
+    const lead = rows[0];
+    if (!lead) throw new AppError(404, 'LEAD_NOT_FOUND', 'El lead no existe.');
+
+    // Orden de comprobaciones: existencia → permisos → idempotencia → versión.
+    // Los permisos van antes que la versión para no dar pistas a quien no tiene derecho.
+    const decision = checkStatusChange(caller, { status: lead.status, agentId: lead.agent_id }, input.status);
+    if (!decision.allowed) throw new AppError(403, decision.code, decision.message);
+
+    if (lead.status === input.status) return; // ya está en ese estado: idempotente, sin cambios
+
+    if (lead.version !== input.version) {
+      throw new AppError(
+        409,
+        'VERSION_CONFLICT',
+        'El lead ha sido modificado por otra persona desde que lo abriste. Recarga y vuelve a intentarlo.',
+        { currentVersion: lead.version },
+      );
+    }
+
+    await client.query(
+      'UPDATE leads SET status = $1, updated_at = now(), version = version + 1 WHERE id = $2',
+      [input.status, leadId],
+    );
+  });
   return getLeadDetail(leadId, new Date());
 }

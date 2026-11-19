@@ -87,6 +87,11 @@ Lo puede hacer el agente asignado o un administrador (`403` en otro caso). Idemp
 Cuerpo: `version` (obligatorio, la que el cliente vio) más al menos un campo editable. Si otra persona modificó
 el lead desde entonces → `409 VERSION_CONFLICT` con `details.currentVersion`; el cliente debe recargar y reintentar.
 
+### `PATCH /api/leads/:id/status`
+Cuerpo: `{ "status": "nuevo|en_gestion|contactado|cerrado", "version": number }`.
+Solo el agente asignado o un administrador (`403 FORBIDDEN`). Un lead cerrado solo lo reabre un administrador
+(`403 REOPEN_FORBIDDEN`). Versión desactualizada → `409 VERSION_CONFLICT`. Pedir el estado actual es idempotente.
+
 | Parámetro | Descripción | Por defecto |
 |---|---|---|
 | `status` | `nuevo`, `en_gestion`, `contactado`, `cerrado` | todos |
@@ -146,13 +151,12 @@ Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.
 
 ## Concurrencia y consistencia
 
-- **Asignación simultánea del mismo lead:** la condición de "sin dueño" va dentro de la propia sentencia
-  (`UPDATE ... WHERE agent_id IS NULL`), de modo que PostgreSQL serializa las peticiones sobre esa fila:
-  una gana y el resto reciben `409`. Un test lanza cuatro asignaciones simultáneas y comprueba que solo una prospera.
-- **Edición con datos desactualizados:** bloqueo optimista. Cada lead tiene una `version`; el cliente la envía
-  al guardar y el `UPDATE` solo se aplica si coincide (`409 VERSION_CONFLICT` en otro caso). Asignar y desasignar
-  también incrementan la versión, de modo que invalidan ediciones hechas con datos anteriores.
+- **Asignación simultánea del mismo lead:** la condición de "sin dueño" va dentro de la propia sentencia (`UPDATE ... WHERE agent_id IS NULL`), de modo que PostgreSQL serializa las peticiones sobre esa fila: una gana y el resto reciben `409`. Un test lanza cuatro asignaciones simultáneas y comprueba que solo una prospera.
+- **Edición con datos desactualizados:** bloqueo optimista. Cada lead tiene una `version`; el cliente la envía al guardar y el `UPDATE` solo se aplica si coincide (`409 VERSION_CONFLICT` en otro caso). Asignar y desasignar también incrementan la versión, de modo que invalidan ediciones hechas con datos anteriores.
 - **Cambio de pesos mientras otros consultan:** (pendiente de implementar y documentar)
+- **Cambio de estado:** transacción corta con bloqueo de la fila (`SELECT ... FOR UPDATE`). Con la fila bloqueada se
+  evalúan los permisos y la versión y se escribe; peticiones simultáneas sobre el mismo lead se atienden una tras otra
+  y solo una puede aplicarse con la misma versión.
 
 ## Pruebas
 `cd backend && npm test`. Cubren la validación de pesos y el cálculo de puntuación (casos límite incluidos).

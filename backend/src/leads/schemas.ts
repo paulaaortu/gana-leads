@@ -56,6 +56,16 @@ export const assignSchema = z
   .object({ agentId: z.number().int().positive().optional() })
   .strict();
 
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
+
+export const changeStatusSchema = z
+  .object({
+    status: z.enum(LEAD_STATUSES),
+    version: z.number().int().positive(),
+  })
+  .strict();
+
 export type ListQuery = z.infer<typeof listQuerySchema>;
 export type CreateLeadInput = z.infer<typeof createLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof updateLeadSchema>;
+export type ChangeStatusInput = z.infer<typeof changeStatusSchema>;
