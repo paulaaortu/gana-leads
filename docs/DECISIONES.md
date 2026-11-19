@@ -58,6 +58,13 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 52 | Configuración corrupta | Listado y detalle → 503 `WEIGHTS_CONFIG_INVALID`; si no hay ninguna activa, se permite guardar una nueva sin base | Respuesta predecible en vez de puntuaciones sin sentido, con vía de recuperación | Asumir que siempre es válida |
 | 53 | Descripción de criterios | Etiquetas y reglas generadas desde las constantes de `criteria.ts` | La pantalla de administración no puede desincronizarse de las reglas reales | Textos escritos a mano en el frontend |
 | 54 | Tests de integración | Ejecución en serie y los de pesos restauran la configuración original | Comparten la base de datos; evita fallos falsos y no deja basura | Ejecución en paralelo |
+| 55 | Stack del frontend | React + TypeScript + Vite, React Router, TanStack Query, CSS propio | Pocas dependencias y control total del diseño; TanStack Query resuelve carga, error, caché, reintentos e invalidación, que son los estados que pide la prueba | Librería de UI completa; peticiones a mano con `useEffect` |
+| 56 | Proxy de desarrollo | Vite reenvía `/api` al backend | Sin CORS en desarrollo y sin URLs fijas en el código | Llamar al backend por URL absoluta |
+| 57 | Identidad en el cliente | Se recuerda solo el id del agente; al arrancar se consulta `GET /api/me` para obtener rol y datos | El rol lo decide siempre el servidor; los guardianes de ruta son solo comodidad de interfaz | Guardar el usuario o el rol completos en el navegador |
+| 58 | Cliente de API | Un único punto con `ApiError` tipado (`status`, `code`, `details`); un 401 cierra sesión; la red caída es `status 0` | Errores tratados igual en toda la aplicación; la interfaz decide por `code` | `fetch` repartido por los componentes |
+| 59 | Caché al cambiar de usuario | Se vacía por completo | Los datos y permisos dependen de la identidad | Mantenerla |
+| 60 | Reintentos | Solo ante red caída o 5xx, máximo 2 | Un 4xx no se arregla reintentando | Reintentar siempre |
+| 61 | Tipos de la API | Duplicados en `frontend/src/api/types.ts` | Simple para el alcance de la prueba | Paquete compartido o generación desde un esquema |
 
 ## Pendientes de decidir
 - Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
@@ -81,3 +88,4 @@ mayores se propone guardar el score y recalcularlo solo al editar un lead o camb
   editar un lead guarda el cambio pero responde 503, porque no puede calcular la puntuación en la respuesta.
 - Un listado paginado puede cruzar un cambio de pesos entre dos páginas; cada respuesta declara su
   `weightsConfigId` para que el cliente lo detecte y refresque.
+- Los tipos de la API están duplicados entre backend y frontend; con más tiempo se compartirían en un paquete común.

@@ -40,6 +40,14 @@ npm test               # pruebas automatizadas
 
 Comprobación rápida: `GET http://localhost:3000/api/health`.
 
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev     # http://localhost:5173 (el proxy de Vite reenvía /api a http://localhost:3000)
+```
+Arranca antes el backend. La pantalla de entrada permite elegir el usuario simulado.
+
 ## Autenticación simulada
 
 No hay login. Cada petición a rutas protegidas lleva la cabecera `X-Agent-Id`; el backend busca ese agente
