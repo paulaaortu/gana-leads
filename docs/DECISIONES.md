@@ -73,17 +73,22 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 67 | Página fuera de rango | Se vuelve a la primera | El servidor devuelve `total = 0` en ese caso; el cliente lo gestiona | Mostrar una lista vacía sin más |
 | 68 | Tamaño de página | Fijo en 20 (como el wireframe); el servidor limita a 100 | Interfaz simple; el tope protege al servidor | Selector de tamaño |
 
-## Pendientes de decidir
-- Asignación atómica: `UPDATE ... WHERE agent_id IS NULL` y respuesta 409.
-- Edición concurrente: bloqueo optimista con `version`.
-- Ordenación por score en SQL, desempate por `id`, y tipo de paginación (offset o cursor).
+## Decisiones cerradas
+
+Las decisiones que figuraban como pendientes ya están implementadas:
+
+- **Asignación atómica:** `UPDATE ... WHERE agent_id IS NULL`; si otro agente ganó la carrera, la API responde `409`.
+- **Edición concurrente:** bloqueo optimista mediante `version`; una edición obsoleta recibe `409 VERSION_CONFLICT`.
+- **Ordenación y paginación:** el score se calcula en SQL, se ordena por `score DESC/ASC` con desempate por `id ASC` y se usa paginación por offset.
+- **Interfaz:** React Router, TanStack Query y CSS propio; las pantallas de listado, alta, detalle y configuración de pesos están implementadas.
+- **Tests de interfaz:** Vitest, jsdom y React Testing Library cubren los flujos principales de alta, detalle y pesos.
 
 ## Limitaciones conocidas
 - El score depende del tiempo (antigüedad); varía como mucho una vez al día por lead.
 - Neon gratuito: arranque en frío tras inactividad.
 - La autenticación es simulada: cualquiera que conozca un X-Agent-Id puede actuar como ese agente. En producción se sustituiría por JWT o sesión.
 - Ordenar por score calculado obliga a evaluar la puntuación de todos los leads filtrados en cada petición
-(no se puede indexar). Con [tu medición con 50 000 leads: ___ ms] es aceptable; para volúmenes mucho
+(no se puede indexar). Para el alcance de la prueba y el seed de 500 leads es aceptable; para volúmenes mucho
 mayores se propone guardar el score y recalcularlo solo al editar un lead o cambiar los pesos, o paginar por cursor.
 - La búsqueda con `ILIKE '%…%'` no usa índice; mejora propuesta: índice `pg_trgm`.
 - Con offset, las páginas profundas son más lentas; mejora propuesta: paginación por cursor.

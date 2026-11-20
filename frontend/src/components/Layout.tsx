@@ -9,6 +9,7 @@ export default function Layout() {
         <strong>CRM · Leads</strong>
         <nav>
           <NavLink to="/" end>Leads</NavLink>
+          <NavLink to="/leads/new">Nuevo lead</NavLink>
           {agent?.role === 'admin' && <NavLink to="/admin/weights">Pesos</NavLink>}
         </nav>
         <span className="who">

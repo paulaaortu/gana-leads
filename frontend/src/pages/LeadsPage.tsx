@@ -90,7 +90,7 @@ export default function LeadsPage() {
 
   return (
     <section>
-      <h2>Leads comerciales</h2>
+      <div className="page-title"><h2>Leads comerciales</h2><Link className="button-link" to="/leads/new">+ Nuevo lead</Link></div>
 
       <div className="toolbar" role="search">
         <label>

@@ -61,7 +61,7 @@ en la tabla `agents` y obtiene de ahí su identidad y su rol. El cliente nunca e
 Sin cabecera o con un agente inexistente → `401`. Operación de administración sin rol `admin` → `403`.
 Todos los errores siguen el formato `{ "error": { "code", "message", "details" } }`.
 
-Pendiente de documentar: datos de ejemplo (`npm run seed`), arranque de la API (`npm run dev`) y del frontend.
+El script `seed` crea datos deterministas para probar la aplicación. Regenera los leads mediante `TRUNCATE leads`, pero conserva los agentes y la configuración de pesos.
 
 
 ## API
@@ -131,15 +131,34 @@ backend/
   src/middleware/  autenticación
   src/routes/
   src/scoring/     motor de puntuación (funciones puras con tests)
-  src/scripts/     migrate (y seed, pendiente)
+  src/scripts/     migrate y seed
   app.ts
   server.ts
-frontend/          (pendiente)
+frontend/
+  src/pages/       listado, alta, detalle, login y pesos
+  src/components/  layout, badges y paginación
+  src/api/         cliente HTTP y tipos de respuesta
+  src/test/        configuración de tests de interfaz
 docs/DECISIONES.md decisiones técnicas y su justificación
 ```
 
 ## Arquitectura
-(pendiente: capas de la API, autenticación simulada, flujo de una petición)
+
+La API está organizada en rutas HTTP, esquemas de validación, repositorios de acceso a datos y módulos de dominio.
+Las rutas autentican la petición y validan el cuerpo o los parámetros con Zod; los repositorios ejecutan las consultas
+SQL y aplican las reglas de concurrencia; el motor de puntuación contiene funciones puras reutilizables por la API y
+por los tests.
+
+Flujo de una petición protegida:
+
+1. El frontend envía `X-Agent-Id` mediante el cliente común de API.
+2. El middleware busca el agente en PostgreSQL y añade su identidad a la petición.
+3. La ruta valida la entrada y comprueba los permisos necesarios.
+4. El repositorio consulta o modifica los datos usando transacciones y control de versiones cuando corresponde.
+5. El manejador de errores devuelve siempre `{ error: { code, message, details } }`.
+
+El frontend usa React Router para las pantallas, TanStack Query para caché, carga, errores e invalidación, y Vite como
+servidor de desarrollo con proxy hacia la API.
 
 ## Modelo de datos
 - `agents`: agentes y administradores (`role`).
@@ -163,7 +182,7 @@ La puntuación **siempre se calcula en el servidor**; el cliente nunca la envía
 - **Dato ausente o inválido:** valoración 0; el desglose indica si el dato faltaba o era inválido.
 - **Validación de pesos:** enteros, no negativos, sin criterios duplicados, todos presentes y suma exacta de 100.
 - **Prioridad:** alta (≥ 75), media (≥ 40 y < 75), baja (< 40), sobre la puntuación ya redondeada.
-- **Empates:** orden estable `puntuación DESC, id ASC` (pendiente de implementar en la API).
+- **Empates:** orden estable `puntuación DESC, id ASC`.
 
 Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.ts`.
 
@@ -184,16 +203,40 @@ Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.
   y solo una puede aplicarse con la misma versión.
 
 ## Pruebas
-`cd backend && npm test`. Cubren la validación de pesos y el cálculo de puntuación (casos límite incluidos).
-(se ampliará con las pruebas de API y concurrencia)
+
+Backend:
+
+```bash
+cd backend
+npm test
+npm run typecheck
+```
+
+Los tests cubren la validación y el cálculo de puntuación, las rutas de leads y pesos, permisos, filtros, paginación,
+asignación concurrente, bloqueo optimista, cambios de estado y consistencia al cambiar la configuración.
+
+Frontend:
+
+```bash
+cd frontend
+npm test
+npm run build
+npm run lint
+```
+
+Los tests de interfaz cubren el alta y su redirección al detalle, la validación y guardado de pesos, y la representación
+del score y el desglose del detalle.
 
 ## Limitaciones conocidas y mejoras propuestas
 - La puntuación depende de la antigüedad, por lo que cambia con el tiempo aunque el lead no se modifique
   (se cuenta en días enteros para que solo varíe una vez al día).
 - El plan gratuito de Neon suspende la base de datos tras un periodo de inactividad: la primera
   consulta puede tardar unos segundos.
-- (se completará al avanzar)
+- El listado no se actualiza en tiempo real: los cambios de otros usuarios se ven al recargar, cambiar de filtro o de página.
 
 ## Uso de inteligencia artificial
-(pendiente: indicar qué herramientas se usaron y cómo se revisó el código)
-Se utilizó Claude para la ayuda de la generación de código.
+
+Se utilizó asistencia de IA para apoyar la implementación y revisión de código. Las decisiones de arquitectura y las
+reglas de negocio se documentaron en [docs/DECISIONES.md](docs/DECISIONES.md). El resultado se revisó mediante tests de
+backend, typecheck, build y lint del frontend, además de una comprobación manual de los flujos principales con datos
+generados por `npm run seed`.

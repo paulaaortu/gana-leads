@@ -4,6 +4,7 @@ import Layout from './components/Layout';
 import LeadDetailPage from './pages/LeadDetailPage';
 import LeadsPage from './pages/LeadsPage';
 import LoginPage from './pages/LoginPage';
+import NewLeadPage from './pages/NewLeadPage';
 import NotFoundPage from './pages/NotFoundPage';
 import WeightsPage from './pages/WeightsPage';
 
@@ -14,6 +15,7 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<LeadsPage />} />
+          <Route path="leads/new" element={<NewLeadPage />} />
           <Route path="leads/:id" element={<LeadDetailPage />} />
           <Route element={<RequireAdmin />}>
             <Route path="admin/weights" element={<WeightsPage />} />

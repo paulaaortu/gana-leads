@@ -1,12 +1,19 @@
 /** Error de la API con el formato uniforme del backend: { error: { code, message, details } }. */
 export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string;
+  readonly details?: unknown;
+
   constructor(
-    public readonly status: number, // 0 = no hubo respuesta (red caída, servidor apagado)
-    public readonly code: string,
+    status: number, // 0 = no hubo respuesta (red caída, servidor apagado)
+    code: string,
     message: string,
-    public readonly details?: unknown,
+    details?: unknown,
   ) {
     super(message);
+    this.status = status;
+    this.code = code;
+    this.details = details;
   }
 }
 
