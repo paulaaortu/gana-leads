@@ -72,6 +72,9 @@ Registro de decisiones con su justificación. Se actualiza a medida que avanza e
 | 66 | Cambio de pesos en el cliente | Se compara `weightsConfigId` entre respuestas y se avisa al usuario | El orden mostrado nunca cambia silenciosamente | Ignorarlo |
 | 67 | Página fuera de rango | Se vuelve a la primera | El servidor devuelve `total = 0` en ese caso; el cliente lo gestiona | Mostrar una lista vacía sin más |
 | 68 | Tamaño de página | Fijo en 20 (como el wireframe); el servidor limita a 100 | Interfaz simple; el tope protege al servidor | Selector de tamaño |
+| 69 | Seguridad HTTP | `helmet`, CORS configurado y límite de peticiones sobre `/api` | Reduce cabeceras inseguras, controla los orígenes permitidos y evita abusos accidentales de la API sin añadir complejidad al dominio | Dejar la API sin cabeceras, CORS abierto y sin límite |
+| 70 | Estados de interfaz | Cada consulta y mutación tiene estados explícitos de carga, error, respuesta vacía y reintento; las mutaciones invalidan las consultas relacionadas | El usuario recibe feedback claro y no ve datos obsoletos después de una operación | Ocultar la latencia o manejar errores de forma distinta en cada pantalla |
+| 71 | Documentación ejecutable | README con instalación, variables, comandos, API, decisiones, limitaciones y correspondencia con el enunciado; `.env.example` versionado sin secretos | Permite levantar y evaluar el proyecto sin conocimiento previo del repositorio | Documentación implícita en el código |
 
 ## Decisiones cerradas
 
@@ -87,18 +90,14 @@ Las decisiones que figuraban como pendientes ya están implementadas:
 - El score depende del tiempo (antigüedad); varía como mucho una vez al día por lead.
 - Neon gratuito: arranque en frío tras inactividad.
 - La autenticación es simulada: cualquiera que conozca un X-Agent-Id puede actuar como ese agente. En producción se sustituiría por JWT o sesión.
-- Ordenar por score calculado obliga a evaluar la puntuación de todos los leads filtrados en cada petición
-(no se puede indexar). Para el alcance de la prueba y el seed de 500 leads es aceptable; para volúmenes mucho
-mayores se propone guardar el score y recalcularlo solo al editar un lead o cambiar los pesos, o paginar por cursor.
+- Ordenar por score calculado obliga a evaluar la puntuación de todos los leads filtrados en cada petición (no se puede indexar). Para el alcance de la prueba y el seed de 500 leads es aceptable; para volúmenes mucho mayores se propone guardar el score y recalcularlo solo al editar un lead o cambiar los pesos, o paginar por cursor.
 - La búsqueda con `ILIKE '%…%'` no usa índice; mejora propuesta: índice `pg_trgm`.
 - Con offset, las páginas profundas son más lentas; mejora propuesta: paginación por cursor.
 - Si la página pedida está fuera de rango, `total` llega como 0.
 - Una edición que no cambia ningún valor también incrementa version y updated_at.
 - El bloqueo de fila del cambio de estado es muy breve, pero bajo carga extrema podría formar colas sobre un mismo lead; es un caso poco realista (un lead lo lleva una persona).
 - Guardar unos pesos idénticos a los actuales crea igualmente una versión nueva; el histórico crece con cada guardado.
-- Con una configuración de pesos corrupta (solo posible por manipulación directa de la base de datos), crear o
-  editar un lead guarda el cambio pero responde 503, porque no puede calcular la puntuación en la respuesta.
-- Un listado paginado puede cruzar un cambio de pesos entre dos páginas; cada respuesta declara su
-  `weightsConfigId` para que el cliente lo detecte y refresque.
+- Con una configuración de pesos corrupta (solo posible por manipulación directa de la base de datos), crear o editar un lead guarda el cambio pero responde 503, porque no puede calcular la puntuación en la respuesta.
+- Un listado paginado puede cruzar un cambio de pesos entre dos páginas; cada respuesta declara su `weightsConfigId` para que el cliente lo detecte y refresque.
 - Los tipos de la API están duplicados entre backend y frontend; con más tiempo se compartirían en un paquete común.
 - El listado no se actualiza en tiempo real: los cambios de otros usuarios se ven al recargar, cambiar de filtro o de página. Mejora propuesta: refresco periódico o WebSockets.

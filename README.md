@@ -8,6 +8,7 @@ mediante un sistema configurable de puntuación ponderada.
 ## Requisitos
 - Node.js 20 o superior
 - Una base de datos PostgreSQL. Se usó [Neon](https://neon.com) (plan gratuito); sirve cualquier PostgreSQL 14+.
+- npm (se instala junto con Node.js).
 
 ## Instalación y configuración
 
@@ -18,27 +19,53 @@ npm install
 cp .env.example .env
 ```
 
+### Base de datos desde cero
+
+1. Crea una base de datos PostgreSQL vacía. Para reproducir el entorno usado en la prueba, crea un proyecto gratuito en [Neon](https://neon.com) y copia su cadena desde **Connect**.
+2. Pega esa cadena en `backend/.env` como `DATABASE_URL`. No hace falta crear tablas, índices, agentes ni pesos manualmente.
+3. Ejecuta `npm run migrate`: aplica los ficheros SQL pendientes dentro de una transacción y registra cada migración en `_migrations`.
+4. Ejecuta `npm run seed -- 500`: crea los cinco usuarios de prueba y genera 500 leads deterministas. El seed puede repetirse; regenera solo los leads y conserva usuarios y pesos.
+
 Edita `backend/.env` con tu cadena de conexión:
 
 ```
 DATABASE_URL=postgresql://usuario:contraseña@host/dbname?sslmode=verify-full&channel_binding=require
 PORT=3000
+CORS_ORIGIN=http://localhost:5173
 ```
 
 > El fichero `.env` está en `.gitignore`: no se suben credenciales al repositorio.
 > En Neon la cadena se copia desde el botón **Connect** del proyecto (usar la conexión directa, no la *pooled*).
 
+Las variables disponibles son `DATABASE_URL` (obligatoria), `PORT` (por defecto `3000`),
+`CORS_ORIGIN` (por defecto `http://localhost:5173`) y `NODE_ENV` (`development`, `test` o `production`).
+El backend valida esta configuración al arrancar y falla con un mensaje explícito si falta la conexión.
+
 ## Ejecución
 
 ```bash
 cd backend
-npm run migrate        # crea las tablas y la configuración inicial de pesos (idempotente)
+npm run migrate        # crea tablas, índices y pesos iniciales (idempotente)
 npm run seed -- 500    # datos de ejemplo: 5 agentes (1 admin) y 500 leads; regenerable
 npm test               # pruebas automatizadas
 npm run dev            # API en http://localhost:3000
 ```
 
 Comprobación rápida: `GET http://localhost:3000/api/health`.
+
+Para ejecutar una comprobación completa desde cero:
+
+```bash
+cd backend
+npm run migrate
+npm run seed -- 500
+npm test
+npm run typecheck
+cd ../frontend
+npm test
+npm run build
+npm run lint
+```
 
 ### Frontend
 ```bash
@@ -50,8 +77,7 @@ Arranca antes el backend. La pantalla de entrada permite elegir el usuario simul
 
 ## Autenticación simulada
 
-No hay login. Cada petición a rutas protegidas lleva la cabecera `X-Agent-Id`; el backend busca ese agente
-en la tabla `agents` y obtiene de ahí su identidad y su rol. El cliente nunca envía el rol.
+No hay login. Cada petición a rutas protegidas lleva la cabecera `X-Agent-Id`; el backend busca ese agente en la tabla `agents` y obtiene de ahí su identidad y su rol. El cliente nunca envía el rol.
 
 | Id | Nombre | Rol |
 |---|---|---|
@@ -69,46 +95,39 @@ El script `seed` crea datos deterministas para probar la aplicación. Regenera l
 Todas las rutas (salvo `/api/health`) requieren la cabecera `X-Agent-Id`.
 
 ### `GET /api/leads`
+Lista paginada de leads. Acepta los filtros `status`, `agent`, `q`, `sort`, `page` y `pageSize`.
+El resultado incluye el agente, la versión de concurrencia, la puntuación, la prioridad y el
+`weightsConfigId` utilizado para calcular esa página.
 
 ### `GET /api/leads/:id`
-Detalle del lead con `score`, `priority`, `breakdown` (valoración, peso, contribución y si el dato estaba
-ausente o era inválido, por criterio) y `weightsConfigId`.
+Detalle del lead con `score`, `priority`, `breakdown` (valoración, peso, contribución y si el dato estaba ausente o era inválido, por criterio) y `weightsConfigId`.
 
 ### `GET /api/agents`
 Lista pública de usuarios simulados (`id`, `name`, `role`), para elegir identidad.
 
 ### `GET /api/weights`
-Configuración activa: `configId`, `weights` (`criterion`, `weight`), quién y cuándo la creó, `valid`/`errors`
-(si está corrupta, informa en lugar de fallar) y la descripción de cada criterio.
+Configuración activa: `configId`, `weights` (`criterion`, `weight`), quién y cuándo la creó, `valid`/`errors` (si está corrupta, informa en lugar de fallar) y la descripción de cada criterio.
 
 ### `PUT /api/weights` (solo administrador)
-Cuerpo: `{ "baseConfigId": number, "weights": [{ "criterion", "weight" }, ...] }`. Los pesos deben ser enteros no negativos,
-sin criterios duplicados, con los cuatro criterios presentes y suma exactamente 100: si no, `400 INVALID_WEIGHTS`
-con **todos** los errores. Si `baseConfigId` ya no es la configuración activa → `409 CONFIG_CONFLICT` con
-`details.currentConfigId`. Crea una configuración nueva y la activa de forma atómica.
+Cuerpo: `{ "baseConfigId": number, "weights": [{ "criterion", "weight" }, ...] }`. Los pesos deben ser enteros no negativos, sin criterios duplicados, con los cuatro criterios presentes y suma exactamente 100: si no, `400 INVALID_WEIGHTS` con **todos** los errores. Si `baseConfigId` ya no es la configuración activa → `409 CONFIG_CONFLICT` con `details.currentConfigId`. Crea una configuración nueva y la activa de forma atómica.
 
 ### `POST /api/leads`
 Cuerpo: `name`, `phone` (obligatorios); `isNewCustomer`, `interest` (`low|medium|high`), `source`
-(`referral|web|event|cold`) opcionales. Cualquier otro campo → `400`. El estado inicial es `nuevo`, sin agente.
-Responde `201` con el lead.
+(`referral|web|event|cold`) opcionales. Cualquier otro campo → `400`. El estado inicial es `nuevo`, sin agente. Responde `201` con el lead.
 
 ### `POST /api/leads/:id/assign`
 Cuerpo opcional: `{ "agentId": number }`. Sin `agentId`, se asigna a quien hace la petición.
-Un agente solo puede asignarse a sí mismo (`403` si indica a otro); un administrador puede asignar a cualquier agente.
-Solo se asignan leads a usuarios con rol `agent` (`400 INVALID_ASSIGNEE`). Si el lead ya pertenece a otro agente → `409 ALREADY_ASSIGNED`.
-Repetir una asignación ya hecha es idempotente.
+Un agente solo puede asignarse a sí mismo (`403` si indica a otro); un administrador puede asignar a cualquier agente. Solo se asignan leads a usuarios con rol `agent` (`400 INVALID_ASSIGNEE`). Si el lead ya pertenece a otro agente → `409 ALREADY_ASSIGNED`. Repetir una asignación ya hecha es idempotente.
 
 ### `POST /api/leads/:id/unassign`
 Lo puede hacer el agente asignado o un administrador (`403` en otro caso). Idempotente.
 
 ### `PATCH /api/leads/:id`
-Cuerpo: `version` (obligatorio, la que el cliente vio) más al menos un campo editable. Si otra persona modificó
-el lead desde entonces → `409 VERSION_CONFLICT` con `details.currentVersion`; el cliente debe recargar y reintentar.
+Cuerpo: `version` (obligatorio, la que el cliente vio) más al menos un campo editable. Si otra persona modificó el lead desde entonces → `409 VERSION_CONFLICT` con `details.currentVersion`; el cliente debe recargar y reintentar. Los campos opcionales pueden enviarse como `null` para borrarlos. El servidor conserva el estado, el agente, las fechas y la puntuación bajo su control.
 
 ### `PATCH /api/leads/:id/status`
 Cuerpo: `{ "status": "nuevo|en_gestion|contactado|cerrado", "version": number }`.
-Solo el agente asignado o un administrador (`403 FORBIDDEN`). Un lead cerrado solo lo reabre un administrador
-(`403 REOPEN_FORBIDDEN`). Versión desactualizada → `409 VERSION_CONFLICT`. Pedir el estado actual es idempotente.
+Solo el agente asignado o un administrador (`403 FORBIDDEN`). Un lead cerrado solo lo reabre un administrador (`403 REOPEN_FORBIDDEN`). Versión desactualizada → `409 VERSION_CONFLICT`. Pedir el estado actual es idempotente.
 
 | Parámetro | Descripción | Por defecto |
 |---|---|---|
@@ -128,16 +147,19 @@ Los empates de puntuación se ordenan por `id` ascendente.
 backend/
   migrations/      esquema SQL versionado
   src/db/          conexión a PostgreSQL
+  src/leads/
   src/middleware/  autenticación
   src/routes/
   src/scoring/     motor de puntuación (funciones puras con tests)
   src/scripts/     migrate y seed
-  app.ts
-  server.ts
+  srcc/weights/    ponderación de pesos
 frontend/
-  src/pages/       listado, alta, detalle, login y pesos
-  src/components/  layout, badges y paginación
   src/api/         cliente HTTP y tipos de respuesta
+  src/auth/
+  src/components/  layout, badges y paginación
+  src/hooks/
+  src/lib/
+  src/pages/       listado, alta, detalle, login y pesos
   src/test/        configuración de tests de interfaz
 docs/DECISIONES.md decisiones técnicas y su justificación
 ```
@@ -145,9 +167,7 @@ docs/DECISIONES.md decisiones técnicas y su justificación
 ## Arquitectura
 
 La API está organizada en rutas HTTP, esquemas de validación, repositorios de acceso a datos y módulos de dominio.
-Las rutas autentican la petición y validan el cuerpo o los parámetros con Zod; los repositorios ejecutan las consultas
-SQL y aplican las reglas de concurrencia; el motor de puntuación contiene funciones puras reutilizables por la API y
-por los tests.
+Las rutas autentican la petición y validan el cuerpo o los parámetros con Zod; los repositorios ejecutan las consultas SQL y aplican las reglas de concurrencia; el motor de puntuación contiene funciones puras reutilizables por la API y por los tests.
 
 Flujo de una petición protegida:
 
@@ -157,8 +177,7 @@ Flujo de una petición protegida:
 4. El repositorio consulta o modifica los datos usando transacciones y control de versiones cuando corresponde.
 5. El manejador de errores devuelve siempre `{ error: { code, message, details } }`.
 
-El frontend usa React Router para las pantallas, TanStack Query para caché, carga, errores e invalidación, y Vite como
-servidor de desarrollo con proxy hacia la API.
+El frontend usa React Router para las pantallas, TanStack Query para caché, carga, errores e invalidación, y Vite como servidor de desarrollo con proxy hacia la API.
 
 ## Modelo de datos
 - `agents`: agentes y administradores (`role`).
@@ -190,17 +209,10 @@ Las constantes de negocio están centralizadas en `backend/src/scoring/criteria.
 
 - **Asignación simultánea del mismo lead:** la condición de "sin dueño" va dentro de la propia sentencia (`UPDATE ... WHERE agent_id IS NULL`), de modo que PostgreSQL serializa las peticiones sobre esa fila: una gana y el resto reciben `409`. Un test lanza cuatro asignaciones simultáneas y comprueba que solo una prospera.
 - **Edición con datos desactualizados:** bloqueo optimista. Cada lead tiene una `version`; el cliente la envía al guardar y el `UPDATE` solo se aplica si coincide (`409 VERSION_CONFLICT` en otro caso). Asignar y desasignar también incrementan la versión, de modo que invalidan ediciones hechas con datos anteriores.
-- **Cambio de pesos mientras otros consultan:** las configuraciones son inmutables y versionadas: guardar crea una
-  nueva y la activa en una transacción, de modo que cualquier consulta ve la configuración anterior completa o la
-  nueva completa. El listado lee pesos y leads en una sola sentencia, por lo que cada respuesta usa una única
-  configuración e indica cuál en `weightsConfigId`.
-- **Dos administradores guardando a la vez:** bloqueo optimista (`baseConfigId`) más un cerrojo de transacción
-  (`pg_advisory_xact_lock`) que los serializa: el segundo ve la configuración ya cambiada y recibe `409`.
-- **Pesos inválidos o corruptos:** el guardado se rechaza con `400` y todos los errores; si la configuración activa
-  está corrupta, las consultas responden `503 WEIGHTS_CONFIG_INVALID` y el administrador puede repararla.
-- **Cambio de estado:** transacción corta con bloqueo de la fila (`SELECT ... FOR UPDATE`). Con la fila bloqueada se
-  evalúan los permisos y la versión y se escribe; peticiones simultáneas sobre el mismo lead se atienden una tras otra
-  y solo una puede aplicarse con la misma versión.
+- **Cambio de pesos mientras otros consultan:** las configuraciones son inmutables y versionadas: guardar crea una nueva y la activa en una transacción, de modo que cualquier consulta ve la configuración anterior completa o la nueva completa. El listado lee pesos y leads en una sola sentencia, por lo que cada respuesta usa una única configuración e indica cuál en `weightsConfigId`.
+- **Dos administradores guardando a la vez:** bloqueo optimista (`baseConfigId`) más un cerrojo de transacción (`pg_advisory_xact_lock`) que los serializa: el segundo ve la configuración ya cambiada y recibe `409`.
+- **Pesos inválidos o corruptos:** el guardado se rechaza con `400` y todos los errores; si la configuración activa está corrupta, las consultas responden `503 WEIGHTS_CONFIG_INVALID` y el administrador puede repararla.
+- **Cambio de estado:** transacción corta con bloqueo de la fila (`SELECT ... FOR UPDATE`). Con la fila bloqueada se evalúan los permisos y la versión y se escribe; peticiones simultáneas sobre el mismo lead se atienden una tras otra y solo una puede aplicarse con la misma versión.
 
 ## Pruebas
 
@@ -212,8 +224,7 @@ npm test
 npm run typecheck
 ```
 
-Los tests cubren la validación y el cálculo de puntuación, las rutas de leads y pesos, permisos, filtros, paginación,
-asignación concurrente, bloqueo optimista, cambios de estado y consistencia al cambiar la configuración.
+Los tests cubren la validación y el cálculo de puntuación, las rutas de leads y pesos, permisos, filtros, paginación, asignación concurrente, bloqueo optimista, cambios de estado y consistencia al cambiar la configuración.
 
 Frontend:
 
@@ -224,19 +235,28 @@ npm run build
 npm run lint
 ```
 
-Los tests de interfaz cubren el alta y su redirección al detalle, la validación y guardado de pesos, y la representación
-del score y el desglose del detalle.
+Los tests de interfaz cubren el alta y su redirección al detalle, la validación y guardado de pesos, y la representación del score y el desglose del detalle.
+
+## Correspondencia con el enunciado
+
+| Requisito | Implementación |
+|---|---|
+| CRUD y validación de leads | Rutas de alta, consulta, edición parcial, esquemas Zod estrictos y normalización de teléfono |
+| Filtros, búsqueda y ordenación | Listado paginado por estado/agente, búsqueda por nombre/teléfono y score ascendente/descendente |
+| Asignación exclusiva | Asignación/desasignación con permisos, idempotencia y actualización atómica |
+| Estados del lead | `nuevo`, `en_gestion`, `contactado` y `cerrado`, con reglas para reabrir y control de versión |
+| Puntuación explicable | Motor TypeScript para el detalle, SQL equivalente para el listado y desglose por criterio |
+| Pesos configurables | Panel de administrador, suma exacta 100, histórico de configuraciones y conflicto entre administradores |
+| Robustez | Transacciones, control de concurrencia, formato único de errores, rate limit y tests de backend/frontend |
+| Interfaz | Estados de carga, error, reintento, respuesta vacía, invalidación de caché y filtros persistidos en URL |
 
 ## Limitaciones conocidas y mejoras propuestas
 - La puntuación depende de la antigüedad, por lo que cambia con el tiempo aunque el lead no se modifique
-  (se cuenta en días enteros para que solo varíe una vez al día).
+(se cuenta en días enteros para que solo varíe una vez al día).
 - El plan gratuito de Neon suspende la base de datos tras un periodo de inactividad: la primera
-  consulta puede tardar unos segundos.
+consulta puede tardar unos segundos.
 - El listado no se actualiza en tiempo real: los cambios de otros usuarios se ven al recargar, cambiar de filtro o de página.
 
 ## Uso de inteligencia artificial
 
-Se utilizó asistencia de IA para apoyar la implementación y revisión de código. Las decisiones de arquitectura y las
-reglas de negocio se documentaron en [docs/DECISIONES.md](docs/DECISIONES.md). El resultado se revisó mediante tests de
-backend, typecheck, build y lint del frontend, además de una comprobación manual de los flujos principales con datos
-generados por `npm run seed`.
+Se utilizó asistencia de IA (Claude y Copilot) para apoyar la implementación y revisión de código. Las decisiones de arquitectura y las reglas de negocio se documentaron en [docs/DECISIONES.md](docs/DECISIONES.md). El resultado se revisó mediante tests de backend, typecheck, build y lint del frontend, además de una comprobación manual de los flujos principales con datos generados por `npm run seed`.
