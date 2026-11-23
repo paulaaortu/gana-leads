@@ -30,4 +30,17 @@ describe('API básica', () => {
     expect(res.status).toBe(400);
     expect(res.body.error.code).toBe('INVALID_JSON');
   });
+
+  it('incluye cabeceras de seguridad y no revela Express', async () => {
+    const res = await request(app).get('/api/no-existe');
+    expect(res.headers['x-content-type-options']).toBe('nosniff');
+    expect(res.headers['x-powered-by']).toBeUndefined();
+  });
+
+  it('CORS: solo responde al origen permitido', async () => {
+    const ok = await request(app).get('/api/no-existe').set('Origin', 'http://localhost:5173');
+    expect(ok.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    const ko = await request(app).get('/api/no-existe').set('Origin', 'http://evil.example');
+    expect(ko.headers['access-control-allow-origin']).toBeUndefined();
+  });
 });

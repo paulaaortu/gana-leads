@@ -21,7 +21,7 @@ cp .env.example .env
 Edita `backend/.env` con tu cadena de conexión:
 
 ```
-DATABASE_URL=postgresql://usuario:contraseña@host/dbname?sslmode=verify-full
+DATABASE_URL=postgresql://usuario:contraseña@host/dbname?sslmode=verify-full&channel_binding=require
 PORT=3000
 ```
 
@@ -34,8 +34,8 @@ PORT=3000
 cd backend
 npm run migrate        # crea las tablas y la configuración inicial de pesos (idempotente)
 npm run seed -- 500    # datos de ejemplo: 5 agentes (1 admin) y 500 leads; regenerable
-npm run dev            # API en http://localhost:3000
 npm test               # pruebas automatizadas
+npm run dev            # API en http://localhost:3000
 ```
 
 Comprobación rápida: `GET http://localhost:3000/api/health`.
